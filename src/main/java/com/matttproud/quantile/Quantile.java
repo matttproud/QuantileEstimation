@@ -15,7 +15,7 @@
  * the License.
  */
 
-package com.umbrant.quantile;
+package com.matttproud.quantile;
 
 /**
  * <p>
@@ -48,5 +48,12 @@ public class Quantile {
   @Override
   public String toString() {
     return String.format("Q{q=%f, eps=%f})", quantile, error);
+  }
+
+  double delta(final double rank, final int n) {
+    if (rank <= Math.floor(quantile * n)) {
+      return u * (n - rank);
+    }
+    return v * rank;
   }
 }
