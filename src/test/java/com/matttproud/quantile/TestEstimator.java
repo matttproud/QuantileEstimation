@@ -14,15 +14,14 @@
  * the License.
  */
 
-package com.umbrant.quantile;
-
-import java.io.IOException;
-import java.util.*;
+package com.matttproud.quantile;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.junit.Test;
+
+import java.util.*;
 
 public class TestEstimator {
   private static Logger LOG = Logger.getLogger(Estimator.class);
@@ -47,7 +46,7 @@ public class TestEstimator {
 
     LOG.info("Inserting into estimator...");
 
-    long startTime = System.currentTimeMillis();
+    long insertBegin = System.currentTimeMillis();
     Random rand = new Random(0xDEADBEEF);
 
     if (generator) {
@@ -65,19 +64,19 @@ public class TestEstimator {
       }
     }
 
+    long insertEnd = System.currentTimeMillis();
+
     for (Quantile quantile : quantiles) {
       double q = quantile.quantile;
-      try {
-        long estimate = estimator.query(q);
-        long actual = (long) ((q) * (window_size - 1));
-        double off = ((double) Math.abs(actual - estimate)) / (double) window_size;
-        LOG.info(String.format("Q(%.2f, %.3f) was %d (off by %.3f)", quantile.quantile,
-            quantile.error, estimate, off));
-      } catch (IOException e) {
-        LOG.info("No samples were present, could not query quantile.");
-      }
+      long estimate = estimator.query(q);
+      long actual = (long) ((q) * (window_size - 1));
+      double off = ((double) Math.abs(actual - estimate)) / (double) window_size;
+      LOG.info(String.format("Q(%.2f, %.3f) was %d (off by %.3f)", quantile.quantile,
+          quantile.error, estimate, off));
     }
-    LOG.info("# of samples: " + estimator.sample.size());
-    LOG.info("Time (ms): " + (System.currentTimeMillis() - startTime));
+    LOG.info("# of samples: " + estimator.samples.size());
+    LOG.info("Insert Time (ms): " + (insertEnd - insertBegin) + " per item "
+        + (float) (insertEnd - insertBegin) / (float) window_size);
+    LOG.info("Extract Time (ms): " + (System.currentTimeMillis() - insertEnd));
   }
 }

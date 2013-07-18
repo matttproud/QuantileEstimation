@@ -15,9 +15,8 @@
  * the License.
  */
 
-package com.umbrant.quantile;
+package com.matttproud.quantile;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -51,6 +50,7 @@ import java.util.ListIterator;
  * </p>
  */
 public class Estimator<T extends Number & Comparable<T>> {
+  static final int BUFFER_CAPACITY = 512;
   // Total number of items in stream
   int count = 0;
 
@@ -60,12 +60,11 @@ public class Estimator<T extends Number & Comparable<T>> {
   /**
    * Current list of sampled items, maintained in sorted order with error bounds
    */
-  final LinkedList<Item> sample = new LinkedList<Item>();
+  final LinkedList<Item> samples = new LinkedList<Item>();
   /**
    * Buffers incoming items to be inserted in batch.
    */
-  final ArrayList<T> buffer = new ArrayList<T>(500);
-  int bufferCount = 0;
+  final ArrayList<T> buffer = new ArrayList<T>(BUFFER_CAPACITY);
   /**
    * Array of Quantiles that we care about, along with desired error.
    */
@@ -101,26 +100,15 @@ public class Estimator<T extends Number & Comparable<T>> {
    * 
    * @param rank the index in the list of samples
    */
-  private double allowableError(final int rank) {
-    // NOTE: according to CKMS, this should be count, not size, but this leads
-    // to error larger than the error bounds. Leaving it like this is
-    // essentially a HACK, and blows up memory, but does "work".
-    // int size = count;
-    final int size = sample.size();
-    double minError = size + 1;
+  private double allowableError(final int rank, final int n) {
+    double minError = n + 1;
     for (final Quantile q : quantiles) {
-      final double error;
-      if (rank <= q.quantile * size) {
-        error = q.u * (size - rank);
-      } else {
-        error = q.v * rank;
-      }
-      if (error < minError) {
-        minError = error;
+      final double delta = q.delta(rank, n);
+      if (delta < minError) {
+        minError = delta;
       }
     }
-
-    return minError;
+    return Math.floor(minError);
   }
 
   /**
@@ -129,17 +117,15 @@ public class Estimator<T extends Number & Comparable<T>> {
    * @param v
    */
   public void insert(final T v) {
-    buffer.set(bufferCount, v);
-    bufferCount++;
+    buffer.add(buffer.size(), v);
 
-    if (bufferCount == buffer.size()) {
-      insertBatch();
-      compress();
+    if (buffer.size() == BUFFER_CAPACITY) {
+      flush();
     }
   }
 
   private void insertBatch() {
-    if (bufferCount == 0) {
+    if (buffer.size() == 0) {
       return;
     }
 
@@ -147,18 +133,18 @@ public class Estimator<T extends Number & Comparable<T>> {
 
     // Base case: no samples
     int start = 0;
-    if (sample.size() == 0) {
+    if (samples.size() == 0) {
       final Item newItem = new Item(buffer.get(0), 1, 0);
-      sample.add(newItem);
+      samples.add(newItem);
       start++;
       count++;
     }
 
-    ListIterator<Item> it = sample.listIterator();
+    ListIterator<Item> it = samples.listIterator();
     Item item = it.next();
-    for (int i = start; i < bufferCount; i++) {
+    for (int i = start; i < buffer.size(); i++) {
       final T v = buffer.get(i);
-      while (it.nextIndex() < sample.size() && item.value.compareTo(v) < 0) {
+      while (it.nextIndex() < samples.size() && item.value.compareTo(v) < 0) {
         item = it.next();
       }
       // If we found that bigger item, back up so we insert ourselves before it
@@ -168,10 +154,10 @@ public class Estimator<T extends Number & Comparable<T>> {
       // We use different indexes for the edge comparisons, because of the above
       // if statement that adjusts the iterator
       int delta;
-      if (it.previousIndex() == 0 || it.nextIndex() == sample.size()) {
+      if (it.previousIndex() == 0 || it.nextIndex() == samples.size()) {
         delta = 0;
       } else {
-        delta = ((int) Math.floor(allowableError(it.nextIndex()))) - 1;
+        delta = ((int) Math.floor(allowableError(it.nextIndex(), samples.size()))) - 1;
       }
       final Item newItem = new Item(v, 1, delta);
       it.add(newItem);
@@ -179,7 +165,7 @@ public class Estimator<T extends Number & Comparable<T>> {
       item = newItem;
     }
 
-    bufferCount = 0;
+    buffer.clear();
   }
 
   /**
@@ -188,11 +174,11 @@ public class Estimator<T extends Number & Comparable<T>> {
    * with the adjacent item if it is.
    */
   private void compress() {
-    if (sample.size() < 2) {
+    if (samples.size() < 2) {
       return;
     }
 
-    final ListIterator<Item> it = sample.listIterator();
+    final ListIterator<Item> it = samples.listIterator();
     int removed = 0;
 
     Item prev = null;
@@ -201,7 +187,7 @@ public class Estimator<T extends Number & Comparable<T>> {
       prev = next;
       next = it.next();
 
-      if (prev.g + next.g + next.delta <= allowableError(it.previousIndex())) {
+      if (prev.g + next.g + next.delta <= allowableError(it.previousIndex(), samples.size())) {
         next.g += prev.g;
         // Remove prev. it.remove() kills the last thing returned.
         it.previous();
@@ -220,20 +206,17 @@ public class Estimator<T extends Number & Comparable<T>> {
    * @param quantile Queried quantile, e.g. 0.50 or 0.99.
    * @return Estimated value at that quantile.
    */
-  public T query(final double quantile) throws IOException {
+  public T query(final double quantile) throws IllegalStateException {
+    flush();
 
-    // clear the buffer
-    insertBatch();
-    compress();
-
-    if (sample.size() == 0) {
-      throw new IOException("No samples present");
+    if (samples.size() == 0) {
+      throw new IllegalStateException("No samples present");
     }
 
     int rankMin = 0;
     final int desired = (int) (quantile * count);
 
-    final ListIterator<Item> it = sample.listIterator();
+    final ListIterator<Item> it = samples.listIterator();
     Item prev, cur;
     cur = it.next();
     while (it.hasNext()) {
@@ -242,13 +225,18 @@ public class Estimator<T extends Number & Comparable<T>> {
 
       rankMin += prev.g;
 
-      if (rankMin + cur.g + cur.delta > desired + (allowableError(desired) / 2)) {
+      if (rankMin + cur.g + cur.delta > desired + (allowableError(desired, samples.size()) / 2)) {
         return prev.value;
       }
     }
 
     // edge case of wanting max value
-    return sample.getLast().value;
+    return samples.getLast().value;
+  }
+
+  void flush() {
+    insertBatch();
+    compress();
   }
 
   private class Item {
