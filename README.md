@@ -1,4 +1,4 @@
-# QuantileEstimation
+# Quantile Estimation
 Implementation of algorithms for streaming estimation of percentiles, especially high-percentiles (e.g. 90th, 95th, 99th).
 This is hugely useful for keeping latency metrics for any type of service, such as your storage system or network.
 Efficiency in both space and time are major concerns; your metrics shouldn't impact the performance of the system!
