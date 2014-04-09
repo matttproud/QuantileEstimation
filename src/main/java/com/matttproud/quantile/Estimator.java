@@ -47,7 +47,7 @@ import java.util.ListIterator;
  * </p>
  *
  * <p>
- * This type is <em>not</em> concurrency safe.
+ * This type is <strong>not</strong> concurrency safe.
  * </p>
  */
 public class Estimator<T extends Number & Comparable<T>> {
@@ -235,9 +235,11 @@ public class Estimator<T extends Number & Comparable<T>> {
   }
 
   /**
+   * <p>
    * Try to remove extraneous items from the set of sampled items. This checks
    * if an item is unnecessary based on the desired error bounds, and merges it
    * with the adjacent item if it is.
+   * </p>
    */
   private void compress() {
     if (samples.size() < 2) {
@@ -265,16 +267,20 @@ public class Estimator<T extends Number & Comparable<T>> {
   }
 
   /**
+   * <p>
    * Get the estimated value at the specified quantile.
+   * </p>
    *
-   * @param quantile Queried quantile, e.g. 0.50 or 0.99.
-   * @return Estimated value at that quantile.
+   * @param quantile Queried quantile, e.g. 0.50 or 0.99.  This quantile rank <strong>most</strong>
+   *                 be defined a priori in the {@link Estimator}'s declaration.
+   *
+   * @return Estimated value at that quantile or {@code null} if no observations have been made.
    */
   public T query(final double quantile) throws IllegalStateException {
     flush();
 
     if (samples.size() == 0) {
-      throw new IllegalStateException("No samples present");
+      return null;
     }
 
     int rankMin = 0;

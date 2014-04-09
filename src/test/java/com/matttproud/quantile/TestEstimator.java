@@ -23,6 +23,8 @@ import org.junit.Test;
 
 import java.util.*;
 
+// TODO(matt): Replace these "tests", as they are from the upstream package and specious.
+
 public class TestEstimator {
   private static Logger LOG = Logger.getLogger(Estimator.class);
   static {
